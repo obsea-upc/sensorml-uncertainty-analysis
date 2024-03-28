@@ -1,6 +1,10 @@
 # SensorML Uncertainty Analysis #
 This repository contains the code the analyze time series data with metrological information encoded in a SensorML file (JSON encoding). The code is shipped with an example of a SBE16 CTD instrument SensorML description and a CSV file containing data acquired at the [OBSEA underwater observatory](https://obsea.es) by the same instrument. This repository uses the OGC Connected Systems standard candidate as a git submodule to validate SensorML documents against its JSON schema.
 
+## Requriments ##
+
+To run this code python3, pip and git need to be installed. 
+
 ## Setup ##
 1. Clone the repository
 
@@ -11,7 +15,8 @@ git clone --recurse-submodules https://github.com/obsea-upc/sensorml-uncertainty
 2. install dependencies 
 ```bash
 cd sensorml-uncertainty-analysis
-pip install -r requirements.txt
+pip install -r requirements.txt # for linux/mac
+py -m pip -r requirements.txt   # for windows
 ```
 3. Run the data analysis with the default SensorML and CSV files 
 ```bash
