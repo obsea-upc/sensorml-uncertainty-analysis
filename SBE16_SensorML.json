@@ -195,12 +195,13 @@
             {
               "name": "calibration-report",
               "link": {
-                "href": "https://.../sbe16_CEM-PT-0012.pdf",
+                "href": "https://github.com/obsea-upc/sensorml-uncertainty-analysis/blob/main/docs/CEM_calibration_SBE16.pdf",
                 "hreflang": "en",
                 "type": "application/pdf"
               }
             }
           ],
+
           "properties": [
             {
               "type": "QuantityRange",
@@ -351,7 +352,17 @@
           "label": "calibration",
           "definition": "http://vocab.nerc.ac.uk/collection/W03/current/W030003",
           "time": "2009-12-30",
-          "description": "Calibration has been performed by comparison, in isothermal media with controlled temperature",
+          "description": "Manufacturer calibration of temperature, conductivity and pressure",
+          "documentation": [
+            {
+              "name": "calibration-report",
+              "link": {
+                "href": "https://github.com/obsea-upc/sensorml-uncertainty-analysis/blob/main/docs/SeaBird_calibration_SBE16.pdf",
+                "hreflang": "en",
+                "type": "application/pdf"
+              }
+            }
+          ],
           "properties": [
             {
               "type": "DataArray",
@@ -429,11 +440,6 @@
     {
       "source": "components/outputs/CNDC",
       "destination": "outputs/CNDC"
-    },
-    {
-      "source": "components/outputs/CNDC",
-      "destination": "outputs/CNDC"
     }
-
   ]
 }
