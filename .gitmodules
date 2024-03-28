@@ -1,0 +1,3 @@
+[submodule "ogcapi-connected-systems"]
+	path = ogcapi-connected-systems
+	url = https://github.com/opengeospatial/ogcapi-connected-systems

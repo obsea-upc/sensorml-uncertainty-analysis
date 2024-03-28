@@ -1,0 +1,439 @@
+{
+  "$schema": "connected-systems/sensorml/schemas/json/PhysicalSystem.json",
+  "type": "PhysicalSystem",
+  "id": "SBE16:16P57353-6479",
+  "uniqueId": "SBE16:16P57353-6479",
+  "label": "SBE16",
+  "identifiers": [
+    {
+      "definition": "http://vocab.nerc.ac.uk/collection/W07/current/IDEN0006",
+      "label": "shortName",
+      "value": "SBE16"
+    },
+    {
+      "definition": "http://vocab.nerc.ac.uk/collection/W07/current/IDEN0002",
+      "label": "longName",
+      "value": "CTD SBE16 at OBSEA"
+    },
+    {
+      "definition": "http://vocab.nerc.ac.uk/collection/W07/current/IDEN0005",
+      "label": "serialNumber",
+      "value": "16P57353-6479"
+    },
+    {
+      "definition": "http://vocab.nerc.ac.uk/collection/W07/current/IDEN0003",
+      "label": "model",
+      "value": "http://vocab.nerc.ac.uk/collection/L22/current/TOOL0870"
+    },
+    {
+      "definition": "http://vocab.nerc.ac.uk/collection/W07/current/IDEN0012",
+      "label": "manufacturer",
+      "value": "http://vocab.nerc.ac.uk/collection/L35/current/MAN0013"
+    }
+  ],
+  "classifiers": [
+    {
+      "definition": "http://vocab.nerc.ac.uk/collection/W06/current/CLSS0002",
+      "label": "instrumentType",
+      "value": "http://vocab.nerc.ac.uk/collection/L05/current/130"
+    }
+  ],
+  "contacts": [
+    {
+      "role": "http://vocab.nerc.ac.uk/collection/W08/current/CONT0004",
+      "individualName": "Joaquín del Río",
+      "contactInfo": {
+        "address": {
+          "electronicMailAddress": "joaquin.del.rio@upc.edu"
+        }
+      }
+    },
+    {
+      "role": "http://vocab.nerc.ac.uk/collection/W08/current/CONT0003",
+      "individualName": "Enoc Martinez",
+      "contactInfo": {
+        "address": {
+          "electronicMailAddress": "enoc.martinez@upc.edu"
+        }
+      }
+    },
+    {
+      "role": "http://vocab.nerc.ac.uk/collection/W08/current/CONT0002",
+      "organisationName": "Universitat Politècnica de Catalunya",
+      "contactInfo": {
+        "address": {
+          "electronicMailAddress": "enoc.martinez@upc.edu"
+        }
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "type": "Quantity",
+      "id": "TEMP",
+      "name": "TEMP",
+      "label": "sea_water_temperature",
+      "definition": "http://vocab.nerc.ac.uk/collection/P01/current/TEMPST01",
+      "uom": {
+        "label": "°C",
+        "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+      }
+    },
+    {
+      "type": "Quantity",
+      "id": "PRES",
+      "name": "PRES",
+      "label": "sea_water_pressure",
+      "definition": "http://vocab.nerc.ac.uk/collection/P01/current/PRESPR01",
+      "uom": {
+        "label": "dbar",
+        "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPDB"
+      }
+    },
+    {
+      "type": "Quantity",
+      "id": "CNDC",
+      "name": "CNDC",
+      "label": "sea_water_electrical_conductivity",
+      "definition": "http://vocab.nerc.ac.uk/collection/P01/current/CNDCST01",
+      "uom": {
+        "label": "S/m",
+        "href": "http://vocab.nerc.ac.uk/collection/P06/current/UECA"
+      }
+    },
+    {
+      "type": "Quantity",
+      "id": "PSAL",
+      "name": "PSAL",
+      "label": "sea_water_salinity",
+      "definition": "http://vocab.nerc.ac.uk/collection/P01/current/PSALST01",
+      "uom": {
+        "label": "Dimensionless",
+        "href": "http://vocab.nerc.ac.uk/collection/P06/current/UUUU"
+      }
+    },
+    {
+      "type": "Quantity",
+      "id": "SVEL",
+      "name": "SVEL",
+      "label": "speed_of_sound_in_sea_water",
+      "definition": "http://vocab.nerc.ac.uk/collection/P01/current/SVELCT01",
+      "uom": {
+        "label": "m/s",
+        "href": "http://vocab.nerc.ac.uk/collection/P06/current/UVAA"
+      }
+    }
+  ],
+  "components": [
+    {
+      "id": "TEMP",
+      "type": "PhysicalComponent",
+      "name": "temperature_sensor",
+      "label": "Temperature Sensor",
+      "uniqueId": "SBE16:16P57353-6479:electronic-thermometer",
+      "capabilities": [
+        {
+          "id": "specifications",
+          "description": "Manufacturer Specifications",
+          "capabilities": [
+            {
+              "type": "Quantity",
+              "label": "resolution",
+              "definition": "...",
+              "uom": {
+                "label": "°C",
+                "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+              },
+              "value": 0.0001
+            },
+            {
+              "type": "QuantityRange",
+              "label": "Measurement Range",
+              "definition": "https://vocab.nerc.ac.uk/collection/W04/current/CAPB0006/",
+              "uom": {
+                "label": "°C",
+                "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+              },
+              "value": [-5.0, 35.0]
+            },
+            {
+              "type": "Quantity",
+              "label": "stability",
+              "definition": "...",
+              "uom": {
+                "label": "°C/month",
+                "href": "..."
+              },
+              "value": 0.0002
+            }
+          ]
+        }
+      ],
+      "history": [
+        {
+          "label": "calibration",
+          "definition": "http://vocab.nerc.ac.uk/collection/W03/current/W030003",
+          "time": "2015-12-01",
+          "description": "Calibration has been performed by comparison, in isothermal media with controlled temperature, using platinum resistance thermometers that are traceable to EIT-90 maintained by CEM, according to Technical Procedure CEM-PT-0012. During calibration, the laboratory temperature is maintained at 23 °C ± 2 ºC, and the relative humidity is kept below 70%. The SeaBird has been fully immersed in the isothermal medium for calibration. The given values are correct with an uncertainty of 0.05 ºC. The indicated uncertainty is expanded and expressed for a coverage factor k = 2 (approximately equivalent to a confidence level of 95%). The calculation of this uncertainty is based on the recommendations of the Guide for the Expression of Measurement Uncertainty, Spanish version, 3rd ed., 2009, published by CEM. This uncertainty does not include equipment stability or other influencing factors.",
+          "classifiers": [
+            {
+              "definition": "https://vocab.nerc.ac.uk/collection/W11/current/ECLS0001/",
+              "label": "CEM technical procedure",
+              "value": "CEM-PT-0012"
+            }
+          ],
+          "contacts": [
+            {
+              "role": "http://vocab.nerc.ac.uk/collection/W08/current/CONT0002",
+              "organisationName": "Centro Español de Metrologia",
+              "contactInfo": {
+                "website": "https://cem.es"
+              }
+            }
+          ],
+          "documentation": [
+            {
+              "name": "calibration-report",
+              "link": {
+                "href": "https://.../sbe16_CEM-PT-0012.pdf",
+                "hreflang": "en",
+                "type": "application/pdf"
+              }
+            }
+          ],
+          "properties": [
+            {
+              "type": "QuantityRange",
+              "label": "Laboratory Temperature",
+              "definition": "http://vocab.nerc.ac.uk/collection/P02/current/CDTA",
+              "uom": {
+                "label": "°C",
+                "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+              },
+              "value": [21.0, 25.0]
+            },
+            {
+              "type": "QuantityRange",
+              "label": "Relative Humidity",
+              "definition": "http://vocab.nerc.ac.uk/collection/P07/current/CFSN0413/",
+              "uom": {
+                "label": "%",
+                "href": "https://vocab.nerc.ac.uk/collection/P06/current/UPCT/"
+              },
+              "value": [0.0, 70.0]
+            },
+            {
+              "type": "DataArray",
+              "elementType": {
+                "type": "DataRecord",
+                "name": "calibration_results",
+                "fields": [
+                  {
+                    "type": "Quantity",
+                    "name": "reference",
+                    "label": "Reference Temperature",
+                    "definition": "...",
+                    "uom": {
+                      "label": "°C",
+                      "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+                    }
+                  },
+                  {
+                    "type": "Quantity",
+                    "name": "reading",
+                    "label": "Reading",
+                    "definition": "...",
+                    "uom": {
+                      "label": "°C",
+                      "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+                    }
+                  },
+                  {
+                    "type": "Quantity",
+                    "name": "correction",
+                    "label": "Correction",
+                    "definition": "...",
+                    "uom": {
+                      "label": "°C",
+                      "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+                    }
+                  },
+                  {
+                    "type": "Quantity",
+                    "name": "uncertainty",
+                    "label": "uncertainty",
+                    "definition": "...",
+                    "uom": {
+                      "label": "°C",
+                      "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+                    }
+                  }
+                ]
+              },
+              "encoding": { "type": "JSONEncoding" },
+              "values": [
+                  [0.000, 0.000, 0.000, 0.01],
+                  [5.132, 5.132, 0.000, 0.03],
+                  [9.976, 9.975, 0.001, 0.01],
+                  [12.050, 12.048, 0.002, 0.01],
+                  [14.978, 14.979, -0.001, 0.01],
+                  [18.032, 18.030, 0.002, 0.01],
+                  [20.028, 20.026, 0.002, 0.01],
+                  [21.975, 21.973, 0.002, 0.01],
+                  [24.974, 24.972, 0.002, 0.01],
+                  [28.015, 28.012, 0.002, 0.01],
+                  [30.028, 30.026, 0.002, 0.01]
+                ]
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "Quantity",
+          "id": "TEMP",
+          "name": "TEMP",
+          "label": "sea_water_temperature",
+          "definition": "http://vocab.nerc.ac.uk/collection/P01/current/TEMPST01",
+          "uom": {
+            "label": "°C",
+            "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CNDC",
+      "type": "PhysicalComponent",
+      "name": "conductivity_cell",
+      "label": "Conductivity Cell",
+      "uniqueId": "SBE16:16P57353-6479:CNDC",
+      "capabilities": [
+        {
+          "id": "specifications",
+          "description": "Manufacturer Specifications",
+          "capabilities": [
+            {
+              "type": "Quantity",
+              "label": "resolution",
+              "definition": "...",
+              "uom": {
+                "label": "S·m-1/month",
+                "href": "http://vocab.nerc.ac.uk/collection/P06/current/UECA"
+              },
+              "value": 0.0003
+            },
+            {
+              "type": "QuantityRange",
+              "label": "Measurement Range",
+              "definition": "https://vocab.nerc.ac.uk/collection/W04/current/CAPB0006/",
+              "uom": {
+                "label": "S/m",
+                "href": "http://vocab.nerc.ac.uk/collection/P06/current/UECA"
+              },
+              "value": [0, 9]
+            },
+            {
+              "type": "Quantity",
+              "label": "stability",
+              "definition": "...",
+              "uom": {
+                "label": "°C/month",
+                "href": "..."
+              },
+              "value": 0.0002
+            }
+          ]
+        }
+      ],
+      "history": [
+        {
+          "label": "calibration",
+          "definition": "http://vocab.nerc.ac.uk/collection/W03/current/W030003",
+          "time": "2009-12-30",
+          "description": "Calibration has been performed by comparison, in isothermal media with controlled temperature",
+          "properties": [
+            {
+              "type": "DataArray",
+              "elementType": {
+                "type": "DataRecord",
+                "name": "calibration_results",
+                "fields": [
+                  {
+                    "type": "Quantity",
+                    "name": "reference",
+                    "label": "Reference Temperature",
+                    "definition": "...",
+                    "uom": {
+                      "label": "S/m",
+                      "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+                    }
+                  },
+                  {
+                    "type": "Quantity",
+                    "name": "reading",
+                    "label": "Reading",
+                    "definition": "...",
+                    "uom": {
+                      "label": "S/m",
+                      "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+                    }
+                  },
+                  {
+                    "type": "Quantity",
+                    "name": "correction",
+                    "label": "Correction",
+                    "definition": "...",
+                    "uom": {
+                      "label": "S/m",
+                      "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+                    }
+                  }
+                ]
+              },
+              "encoding": { "type": "JSONEncoding" },
+              "values": [
+                [0.0000, 0.0000, 0.00000],
+                [2.96254, 2.9625, 0.00001],
+                [3.26825, 3.2682, -0.00001],
+                [4.24556, 4.2456, -0.00000],
+                [4.58911, 4.589, -0.00000],
+                [5.14446, 5.1445, -0.00000],
+                [5.66383, 5.6638, -0.00000],
+                [6.03437, 6.0344, -0.00000]
+              ]
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "Quantity",
+          "id": "CNDC",
+          "name": "TEMP",
+          "label": "sea_water_electrical_conductivity",
+          "definition": "https://vocab.nerc.ac.uk/collection/P06/current/UECA/",
+          "uom": {
+            "label": "S/m",
+            "href": "http://vocab.nerc.ac.uk/collection/P06/current/UPAA"
+          }
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "source": "components/outputs/TEMP",
+      "destination": "outputs/TEMP"
+    },
+    {
+      "source": "components/outputs/CNDC",
+      "destination": "outputs/CNDC"
+    },
+    {
+      "source": "components/outputs/CNDC",
+      "destination": "outputs/CNDC"
+    }
+
+  ]
+}
