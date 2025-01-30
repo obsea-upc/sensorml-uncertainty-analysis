@@ -9,6 +9,7 @@ license: MIT
 created: 26/3/24
 """
 import rich as r
+import rich
 import json
 import numpy as np
 import pandas as pd
@@ -364,9 +365,145 @@ class SensorML(AbstractComponent):
             return self.calibrations[variable_name]
 
 
+def sensorml_from_gui(generic: dict, variables: list):
+    """
+    Generate a SensorML document from the GUI output
+    """
+    required_vars = ["sensorName", "serialNumber"]
 
+    for v in required_vars:
+        assert generic[v], f"field {v} is required!"
 
+    assert len(variables), f"At least one variable is required!"
 
+    sensor_id = generic["sensorName"] + "-SN" + generic["serialNumber"]
+    doc = {
+        "$schema": "connected-systems/sensorml/schemas/json/PhysicalSystem.json",
+        "type": "PhysicalSystem",
+        "id": sensor_id,
+        "uniqueId": sensor_id,
+        "label": generic["sensorName"],
+        "identifiers": [
+            {
+                "definition": "http://vocab.nerc.ac.uk/collection/W07/current/IDEN0006",
+                "label": "shortName",
+                "value": generic["sensorName"]
+            },
+            {
+                "definition": "http://vocab.nerc.ac.uk/collection/W07/current/IDEN0002",
+                "label": "longName",
+                "value":  generic["longName"],
+            },
+            {
+                "definition": "http://vocab.nerc.ac.uk/collection/W07/current/IDEN0005",
+                "label": "serialNumber",
+                "value": generic["serialNumber"]
+            },
+            {
+                "definition": "http://vocab.nerc.ac.uk/collection/W07/current/IDEN0003",
+                "label": "model",
+                "value": generic["model"]["uri"]
+            },
+            {
+                "definition": "http://vocab.nerc.ac.uk/collection/W07/current/IDEN0012",
+                "label": "manufacturer",
+                "value": generic["manufacturer"]["uri"]
+            }
+        ],
+        "classifiers": [
+            {
+                "definition": "http://vocab.nerc.ac.uk/collection/W06/current/CLSS0002",
+                "label": "instrumentType",
+                "value": generic["sensorType"]
+            }
+        ],
+        "contacts": [],
+        "outputs": [],
+        "components": []
+    }
 
+    for v in variables:
+        rich.print(v)
+        output =     {
+          "type": "Quantity",
+          "id": v["varcode"],
+          "name": v["standardName"]["label"],
+          "label": v["varname"]["label"],
+          "definition": v["standardName"]["uri"],
+          "uom": {
+            "label": v["units"]["label"],
+            "href": v["units"]["uri"]
+          }
+        }
+        doc["outputs"].append(output)
 
+        uom = {"label": v["units"]["label"], "href": v["units"]["uri"]}
 
+        component =     {
+          "id": "TEMP",
+          "type": "PhysicalComponent",
+          "name": generic["sensorName"] + " " + v["varcode"],
+          "label": generic["sensorName"] + " " + v["varcode"],
+          "uniqueId": sensor_id + ":" +v["varcode"],
+          "capabilities": [],
+          "history": [
+            {
+              "label": "calibration",
+              "definition": "http://vocab.nerc.ac.uk/collection/W03/current/W030003",
+              "time": v["calibration"]["date"],
+              "description": "Calibration.",
+              "classifiers": [],
+              "contacts": [
+                {
+                  "role": "http://vocab.nerc.ac.uk/collection/W08/current/CONT0002",
+                  "organisationName": v["calibration"]["lab"],
+                }
+              ],
+              "documentation": [],
+              "properties": [
+                {
+                  "type": "DataArray",
+                  "elementType": {
+                    "type": "DataRecord",
+                    "name": "calibration_results",
+                    "fields": [
+                      {
+                        "type": "Quantity",
+                        "name": "reference",
+                        "definition": "...",
+                        "uom": uom
+                      },
+                      {
+                        "type": "Quantity",
+                        "name": "measurement",
+                        "label": "Reading",
+                        "definition": "...",
+                        "uom":uom
+                      },
+                      {
+                        "type": "Quantity",
+                        "name": "correction",
+                        "label": "Correction",
+                        "definition": "...",
+                        "uom": uom
+                      },
+                      {
+                        "type": "Quantity",
+                        "name": "uncertainty",
+                        "label": "uncertainty",
+                        "definition": "...",
+                        "uom": uom
+                      }
+                    ]
+                  },
+                  "encoding": { "type": "JSONEncoding" },
+                  "values": v["calibration"]["array"]
+                }
+              ]
+            }
+          ],
+          "outputs": [output]
+        }
+        doc["components"].append(component)
+
+    return doc
