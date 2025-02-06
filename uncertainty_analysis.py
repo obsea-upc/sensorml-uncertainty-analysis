@@ -18,16 +18,79 @@ import matplotlib.pyplot as plt
 import matplotlib
 import pandas as pd
 import numpy as np
+import rich
+from emso_metadata_harmonizer.metadata.dataset import export_to_netcdf
+
 from SensorML import SensorML
+import emso_metadata_harmonizer as emh
+
+def get_decimal_precision(values, limit=1000):
+    decimals = 0
+
+    if len(values) < limit:  # If we have more than limit values, just take some of them
+        values = values[:limit]
+
+    for v in values:
+        try:
+            s = str(v)
+            decimals = max(len(s.split(".")[1]), 0)
+        except IndexError:
+            pass
+    return decimals
 
 
-if __name__ == "__main__":
-    argparser = ArgumentParser()
-    argparser.add_argument("sensorml", type=str, help="SensorML document", default="")
-    argparser.add_argument("csv", type=str, help="CSV file", default="")
-    args = argparser.parse_args()
+def correct_data_point(value, references,  measurements, corrections, uncertainties):
+    for i in range(len(measurements) - 1):
+        if measurements[i] < value < measurements[i + 1]:
+            # measurements are X, corrections are Y
+            # Interpolation implemented as  y = (x-x1)*(y2-y1)/(x2-x1) + y1
+            x = value
+            x1 = measurements[i - 1]
+            x2 = measurements[i]
+            y1 = corrections[i - 1]
+            y2 = corrections[i]
+            corr = (x - x1) * (y2 - y1) / (x2 - x1) + y1
+            # Get the maximum uncertainty
+            uncert = max(uncertainties[i], uncertainties[i + 1])
+            # rich.print(f"   Raw value: {value}")
+            # rich.print(f"     Segment: between {measurements[i]} and {measurements[i + 1]}")
+            # rich.print(f"        corr: {corr}")
+            # rich.print(f"  corr value: {value + corr}")
+            # rich.print(f"      uncert: {uncert}")
+            return corr, uncert
+    return np.nan, np.nan
+
+
+def calibrate(values, references, measurements, corrections, uncertainties):
+    # measurements are X, corrections are Y
+    # Interpolation implemented as  y = (x-x1)*(y2-y1)/(x2-x1) + y1
+
+    # Use the precision of the uncertainty
+    p = get_decimal_precision(uncertainties)
+    result = np.zeros(len(values))
+    result_u95 = np.zeros(len(values))
+    result_u99 = np.zeros(len(values))
+
+    for i in range(len(values)):
+        corr, uncert95 = correct_data_point(values[i], references, measurements, corrections, uncertainties)
+        result[i] = round(values[i] + corr, p)
+        result_u95[i] = round(uncert95, p)
+        result_u99[i] = round(1.5 * uncert95, p)
+
+    return result, result_u95, result_u99
+
+
+def open_netcdf(filename):
+    return emh.metadata.dataset.load_data(filename)
+
+def write_netcdf(wf):
+    return emh.metadata.dataset.export_to_netcdf(wf, "output.nc")
+
+
+def run_analysis(sensorml: str, dataset: str, output:str, plot=False):
+
     matplotlib.use('TkAgg')  # Set the backend to TkAgg
-    with open(args.sensorml) as f:
+    with open(sensorml) as f:
         doc = json.load(f)
 
     # Load JSON Schema
@@ -42,14 +105,25 @@ if __name__ == "__main__":
         jsonschema.validate(instance=doc, schema=schema, resolver=resolver)
     except jsonschema.exceptions.ValidationError as e:
         r.print(e)
-        r.print(f"[red]document {args.sensorml} not valid!")
+        r.print(f"[red]document {sensorml} not valid!")
         raise e
     r.print("[green]done")
 
     sml = SensorML(doc)
-    df = pd.read_csv(args.csv)
-    df["time"] = pd.to_datetime(df["time"])
-    df = df.set_index("time")
+    if dataset.endswith(".csv"):
+        df = pd.read_csv(dataset)
+        wf = None
+    elif dataset.endswith(".nc"):
+        wf = open_netcdf(dataset)
+        df = wf.data
+    else:
+        raise ValueError(f"Unimplemented format {dataset.split('.')}")
+
+    if "time" in df.columns:
+        df = df.rename(columns={"time": "TIME"})
+
+    df["TIME"] = pd.to_datetime(df["TIME"])
+    df = df.set_index("TIME")
 
     for variable in df.columns:
         if variable.lower().endswith("_qc"):
@@ -59,50 +133,115 @@ if __name__ == "__main__":
         if not calibration:
             r.print(f"[yellow]No calibration found for {variable}!")
             continue
-        # if variable == "CNDC":
-        #     continue
+
+        # Getting the precision based in calibration
+
 
         raw_values = df[variable].values
         times = df.index.values
-        corrected_values = calibration.correct(raw_values)
+        # corrected_values = calibration.correct(raw_values)
+        # corrected_values, uncertainties = calibration.get_corrections_u(raw_values)
+        print("uncertainties", calibration.uncertainties)
+        corrected_values, u95, u99 = calibrate(raw_values, calibration.references, calibration.measurements,
+                                               calibration.corrections, calibration.uncertainties)
 
-        r.print(f"Plotting variable {variable}")
-        fig, axd = plt.subplot_mosaic([['left', 'right'], ['center', 'center'], ['bottom', 'bottom']])
+        print(pd.DataFrame({
+            "raw": raw_values,
+            "corrected": corrected_values,
+            "u95": u95
+        }))
 
-        ax1 = axd["left"]
-        ax2 = axd["right"]
-        ax3 = axd["center"]
-        ax4 = axd["bottom"]
+        df[variable + "_RAW"] = raw_values
+        df[variable] = corrected_values
+        df[variable + "_U95"] = u95
+        df[variable + "_U99"] = u99
 
-        ax3.get_shared_x_axes().join(ax4, ax3)
+        if wf:
+            if "projects" in wf.metadata:
+                wf.metadata["projects"] += " MINKE"
+            else:
+                wf.metadata["projects"] = "MINKE"
 
-        ax1.plot(times, raw_values, label="raw data")
-        ax1.set_title(variable + " raw data")
-        ax1.legend()
-        ax1.grid()
+            wf.metadata["funding"] = "This work has been funded by the MINKE project funded by the European Commission within the Horizon 2020 Programme (2014-2020), grant Agreement No. 101008724."
+            wf.data = df.reset_index()
+            base = wf.vocabulary[variable].copy()  # original metadata
 
-        calibration.plot_calibration(ax2)
-        ax2.set_title(f"{variable} calibration curve")
-        ax2.grid()
+            # Add calibration notes
+            meta = base.copy()
+            meta["long_name"] += " (corrected values)"
+            meta["comment"] = "values corrected with latest available calibration. " + meta["comment"]
+            ancillary = meta["ancillary_variables"].split(" ")
+            ancillary += [f"{variable}_{suffix}" for suffix in ["RAW", "U95", "U99"]]
 
-        ax3.set_title(variable + " processed data")
-        ax3.plot(times, corrected_values, label="corrected data")
-        ax3.plot(times, raw_values, alpha=0.5, label="raw data")
-        ax3.grid()
+            meta["ancillary_variables"] = ", ".join(ancillary)
+            wf.vocabulary[variable] = meta
 
-        if calibration.defined_uncertainty():
-            uncertainty = calibration.calc_uncertainty(raw_values, times, stability=True)
-            ax3.fill_between(times, raw_values + uncertainty, raw_values - uncertainty, alpha=0.5, label="uncertainty")
+            # Raw data
+            meta = base.copy()
+            meta["comment"] = "raw data. " + meta["comment"]
+            meta["long_name"] += " (raw data)"
+            wf.vocabulary[variable + "_RAW"] = meta
 
-            ax4.fill_between(times, uncertainty, -uncertainty, alpha=0.3, label="uncertainty")
-            ax4.set_title("Corrections + Uncertainty")
+            meta = {}
+            meta["long_name"] = base["long_name"] + " expanded uncertainty with 95% coverage (k=2)"
+            meta["sdn_uom_urn"] = base["sdn_uom_urn"]
+            meta["sdn_uom_name"] = base["sdn_uom_name"]
+            meta["units"] = base["units"]
+            meta["comment"] = "Expanded uncertainty with 95% coverage (k=2)"
+            wf.vocabulary[variable + "_UNCERTAINTY"] = meta
+
+            export_to_netcdf(wf, output, multisensor_metadata=True)
         else:
-            ax4.set_title("Corrections")
-
-        ax4.plot(times, corrected_values - raw_values, label="correction")
-        ax4.grid()
-        ax4.legend()
+            df.to_csv(output)
 
 
-        ax3.legend()
-    plt.show()
+        if plot:
+            r.print(f"Plotting variable {variable}")
+            fig, axd = plt.subplot_mosaic([['left', 'right'], ['center', 'center'], ['bottom', 'bottom']])
+
+            ax1 = axd["left"]
+            ax2 = axd["right"]
+            ax3 = axd["center"]
+            ax4 = axd["bottom"]
+
+            ax3.get_shared_x_axes().join(ax4, ax3)
+
+            ax1.plot(times, raw_values, label="raw data")
+            ax1.set_title(variable + " raw data")
+            ax1.legend()
+            ax1.grid()
+
+            calibration.plot_calibration(ax2)
+            ax2.set_title(f"{variable} calibration curve")
+            ax2.grid()
+
+            ax3.set_title(variable + " processed data")
+            ax3.plot(times, corrected_values, label="corrected data")
+            ax3.plot(times, raw_values, alpha=0.5, label="raw data")
+            ax3.grid()
+
+            if calibration.defined_uncertainty():
+                uncertainty = calibration.calc_uncertainty(raw_values, times, stability=True)
+                ax3.fill_between(times, raw_values + uncertainty, raw_values - uncertainty, alpha=0.5, label="uncertainty")
+
+                ax4.fill_between(times, uncertainty, -uncertainty, alpha=0.3, label="uncertainty")
+                ax4.set_title("Corrections + Uncertainty")
+            else:
+                ax4.set_title("Corrections")
+
+            ax4.plot(times, corrected_values - raw_values, label="correction")
+            ax4.grid()
+            ax4.legend()
+
+            ax3.legend()
+        plt.show()
+
+
+if __name__ == "__main__":
+    argparser = ArgumentParser()
+    argparser.add_argument("sensorml", type=str, help="SensorML document", default="")
+    argparser.add_argument("dataset", type=str, help="input dataset in CSV or NetCDF format")
+    argparser.add_argument("output", type=str, help="output in CSV or NetCDF format")
+    argparser.add_argument("--plot", action="store_true", help="Plot the variables")
+    args = argparser.parse_args()
+    run_analysis(args.sensorml, args.dataset, args.output, plot=args.plot)

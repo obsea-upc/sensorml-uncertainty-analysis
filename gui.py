@@ -1,11 +1,15 @@
+import importlib
 import json
+import rich
 import tkinter as tk
+from argparse import ArgumentParser
+
 import pandas as pd
 import os
 from tkinter import ttk, W, E, messagebox, filedialog
 from PIL import Image, ImageTk
 import traceback
-from SensorML import sensorml_from_gui
+import SensorML
 
 valid_time_formats = ["%Y-%m-%d", "%Y/%m/%d", "%Y/%m/%d %H:%m:%s"]
 
@@ -134,6 +138,122 @@ class VocabComboBox:
             "uri": self.process_label(self.vocab_uri)
         }
 
+    def vocab_lookup(self, d):
+        """fills a vocab element based on one of the values"""
+        assert(isinstance(d, dict)), f"expected dict, got {type(d)}"
+
+        # Force missing elements
+        for e in ["uri", "label", "code"]:
+            if e not in d.keys():
+                d[e] = ""
+
+        df = self.df
+        if d["uri"]:
+            row = df[df["uri"] == d["uri"]]
+        elif d["label"]:
+            row = df[df["prefLabel"] == d["label"]]
+        elif d["code"]:
+            row = df[df["code"] == d["id"]]
+        else:
+            raise ValueError("value not found!")
+
+        return {
+            "label": row["prefLabel"].values[0],
+            "code": row["id"].values[0],
+            "uri": row["uri"].values[0]
+        }
+
+
+    def put(self, doc):
+        doc = self.vocab_lookup(doc)
+        self.value.set(doc["label"])
+        self.validate_list(None)
+
+
+
+class TextField:
+    def __init__(self, root, label, row, padx=10, pady=10, validation="string"):
+        self.root = root
+        self.label = label
+
+        tk.Label(root, text=label).grid(row=row, column=0, padx=padx, pady=pady, sticky=E)
+        self.entry = tk.Entry(root)
+        self.entry.grid(row=row, column=1, padx=padx, pady=pady, sticky=W)
+
+        self.validation = tk.Label(root, text=WARN, fg=YELLOW) # east
+        self.validation.grid(row=row, column=2, padx=padx, pady=pady, sticky=W)
+
+        self.validation_handler = None
+        if validation == "string":
+            self.validation_handler = self.validate_string
+        elif validation in ["date", "datetime", "time", "timestamp"]:
+            self.validation_handler = self.validate_datetime
+        elif validation == "float":
+            self.validation_handler = self.validate_float
+
+        self.entry.bind("<KeyRelease>", self.validate)  # Trigger filtering as user types
+
+    def get(self):
+        return self.entry.get()
+
+    def put(self, value):
+        self.entry.delete(0, tk.END)  # Clears the text inside the Entry
+        self.entry.insert(0, value)
+        self.validate(None)
+
+
+    def validate(self, event):
+        """call validate via the validation handler"""
+        validated = self.validation_handler(self.entry.get())
+        if validated:
+            self.validation.config(text=u"\u2713 valid", fg=GREEN)
+        else:
+            self.validation.config(text=u"\u26A0 not valid", fg=RED)
+
+    @staticmethod
+    def validate_float(value):
+        """will be true if string not empty"""
+        try:
+            float(value)
+        except ValueError:
+            return False
+        return True
+
+    # Validation methods
+    @staticmethod
+    def validate_string(value):
+        if value:
+            return True
+
+    @staticmethod
+    def validate_datetime(value):
+        t = None
+        for time_format in valid_time_formats:
+            try:
+                t = pd.to_datetime(value, format=time_format)
+                break
+            except ValueError:
+                pass
+        return not pd.isnull(t)
+
+
+
+    def __repr__(self):
+        return f"{self.label}: {self.entry.get()}"
+
+
+class FloatField(TextField):
+    def __init__(self, root, label, row, padx=10, pady=10):
+        TextField.__init__(self, root, label, row, padx, pady, validation="float")
+
+    def get(self):
+        return float(self.entry.get())
+
+    def put(self, value):
+        self.entry.delete(0, tk.END)  # Clears the text inside the Entry
+        self.entry.insert(0, str(value))
+        self.validate(None)
+
 
 class CalibrationArray:
     def __init__(self, root, row, padx=5, pady=5):
@@ -261,72 +381,22 @@ class CalibrationArray:
             array.append(simple_row)
         return array
 
+    def put(self, array):
+        for i in range(len(array)):
+            self.add_calibration_row()
+
+        for i, row in enumerate(self.calibration_rows):
+            ref, meas, corr, uncert = array[i]
+            row["reference"].delete(0, tk.END)
+            row["reference"].insert(0, str(ref))
+            row["measurement"].delete(0, tk.END)
+            row["measurement"].insert(0, str(meas))
+            row["correction"].delete(0, tk.END)
+            row["correction"].insert(0, str(corr))
+            row["expanded uncertainty"].delete(0, tk.END)
+            row["expanded uncertainty"].insert(0, str(uncert))
 
 
-class TextField:
-    def __init__(self, root, label, row, padx=10, pady=10, validation="string"):
-        self.root = root
-        self.label = label
-
-        tk.Label(root, text=label).grid(row=row, column=0, padx=padx, pady=pady, sticky=E)
-        self.entry = tk.Entry(root)
-        self.entry.grid(row=row, column=1, padx=padx, pady=pady, sticky=W)
-
-        self.validation = tk.Label(root, text=WARN, fg=YELLOW) # east
-        self.validation.grid(row=row, column=2, padx=padx, pady=pady, sticky=W)
-
-        self.validation_handler = None
-        if validation == "string":
-            self.validation_handler = self.validate_string
-        elif validation in ["date", "datetime", "time", "timestamp"]:
-            self.validation_handler = self.validate_datetime
-        elif validation == "float":
-            self.validation_handler = self.validate_float
-
-        self.entry.bind("<KeyRelease>", self.validate)  # Trigger filtering as user types
-
-    def get(self):
-        return self.entry.get()
-
-
-    def validate(self, event):
-        """call validate via the validation handler"""
-        validated = self.validation_handler(self.entry.get())
-        if validated:
-            self.validation.config(text=u"\u2713 valid", fg=GREEN)
-        else:
-            self.validation.config(text=u"\u26A0 not valid", fg=RED)
-
-    @staticmethod
-    def validate_float(value):
-        """will be true if string not empty"""
-        try:
-            float(value)
-        except ValueError:
-            return False
-        return True
-
-    # Validation methods
-    @staticmethod
-    def validate_string(value):
-        if value:
-            return True
-
-    @staticmethod
-    def validate_datetime(value):
-        t = None
-        for time_format in valid_time_formats:
-            try:
-                t = pd.to_datetime(value, format=time_format)
-                break
-            except ValueError:
-                pass
-        return not pd.isnull(t)
-
-
-
-    def __repr__(self):
-        return f"{self.label}: {self.entry.get()}"
 
 class CalibrationSheet:
     def __init__(self, root, row, padx=5, pady=5):
@@ -334,7 +404,7 @@ class CalibrationSheet:
         row += 1
         self.date = TextField(root, "calibration date", row, validation="date", pady=pady)
         row += 1
-        self.k = TextField(root, "Coverage factor (k)", row, validation="float", pady=pady)
+        self.k = FloatField(root, "Coverage factor (k)", row, pady=pady)
 
         self.array = CalibrationArray(root, row, padx=padx, pady=pady)
 
@@ -345,6 +415,12 @@ class CalibrationSheet:
             "coverageFactor": self.k.get(),
             "array": self.array.get()
         }
+
+    def put(self, doc):
+        self.lab.put(doc["lab"])
+        self.date.put(doc["date"])
+        self.k.put(doc["coverageFactor"])
+        self.array.put(doc["array"])
 
 
 class GenericTab:
@@ -397,6 +473,18 @@ class VariableTab(GenericTab):
             "calibration": self.calibration.get()
         }
 
+    def put(self, doc):
+        self.varcode.put(doc["varcode"])
+        # Set tab name manually
+        self.notebook.tab(self.tab, text=self.varcode.get())
+
+        self.standard_name.put(doc["standardName"])
+        self.varname.put(doc["varname"])
+        self.units.put(doc["units"])
+        self.calibration.put(doc["calibration"])
+
+
+
 
 class SerialNumber(TextField):
     def __init__(self, tab, name, row):
@@ -431,6 +519,15 @@ class GeneralInfoTab(GenericTab):
         lines.append(self.sensor_model.__repr__())
         return "\n".join(lines)
 
+    def put(self, doc):
+        """Fills the GeneralInfoTab from a JSON doc"""
+        self.sensor_name.put(doc["sensorName"])
+        self.serial_number.put(doc["serialNumber"])
+        self.long_name.put(doc["longName"])
+        self.sensor_model.put(doc["model"])
+        self.manufacturer.put(doc["manufacturer"])
+        self.sensor_type.put(doc["sensorType"])
+
 
 class SensorEditor:
     def __init__(self):
@@ -455,15 +552,18 @@ class SensorEditor:
         self.general = GeneralInfoTab(self)
 
         self.rowcount+=1
-        add_tab_button = tk.Button(root, text="Add variable", width=40, command=self.add_tab)
+        add_tab_button = tk.Button(root, text="Add variable", command=self.add_tab)
         add_tab_button.grid(row=self.rowcount, column=0, padx=10, pady=10, sticky="nsew")
+
 
         add_tab_button = tk.Button(root, text="Delete variable", command=self.delete_tab)
         add_tab_button.grid(row=self.rowcount, column=1, padx=10, pady=10, sticky="nsew")
         self.rowcount += 1
 
-        btn_submit = tk.Button(root, text="Generate", width=40, command=self.generate)
-        btn_submit.grid(row=self.rowcount, column=0, columnspan=2, pady=10, sticky="nsew")
+        btn_submit = tk.Button(root, text="Generate and save", command=self.generate)
+        btn_submit.grid(row=self.rowcount, column=0, padx=10, pady=10)
+        btn_submit = tk.Button(root, text="Open document",  command=self.open_doc)
+        btn_submit.grid(row=self.rowcount, column=1, padx=10, pady=10)
         self.rowcount += 1
 
 
@@ -487,6 +587,7 @@ class SensorEditor:
     def add_tab(self):
         v = VariableTab(self.notebook)
         self.variables.append(v)
+        return v
 
     def delete_tab(self):
         # Get the currently selected tab
@@ -500,6 +601,16 @@ class SensorEditor:
         else:
             print("Can't delete general info tab!")
 
+    def open_doc(self):
+        importlib.reload(SensorML)
+        file_path = filedialog.askopenfilename(defaultextension=".json",
+                                                 filetypes=[("SensorML Files", "*.json"), ("All Files", "*.*")])
+        rich.print(f"Opening file {file_path}...")
+        doc = SensorML.to_gui(file_path)
+        self.general.put(doc)
+        for vardoc in doc["variables"]:
+            var = self.add_tab()
+            var.put(vardoc)
 
     def generate(self):
         """
@@ -520,17 +631,19 @@ class SensorEditor:
         except ValueError as e:
             print(traceback.format_exc())
             messagebox.showerror("Input Error", "Document validation failed!")
+            return
 
-        import rich
-        rich.print(general)
-        rich.print(variables)
         try:
-            doc = sensorml_from_gui(general, variables)
+            importlib.reload(SensorML)
+            doc = SensorML.from_gui(general, variables)
+            with open("temp.json", "w") as f:
+                f.write(json.dumps(doc, indent=4))
+            SensorML.validate_doc(doc)
+
         except AssertionError as e:
             messagebox.showerror("Input Error", e.__str__())
             return
 
-        rich.print(doc)
         file_path = filedialog.asksaveasfilename(defaultextension=".json",
                                                  filetypes=[("SensorML Files", "*.json"), ("All Files", "*.*")])
         with open(file_path, "w") as f:
@@ -539,6 +652,14 @@ class SensorEditor:
         messagebox.showinfo('Info', 'Save completed!')
 
 
+if __name__ == "__main__":
+    argparser = ArgumentParser()
+    argparser.add_argument("-s", "--sensorml", type=str, help="SensorML document", default="")
+    args = argparser.parse_args()
 
+    if args.sensorml:
+        with open(args.sensorml) as f:
+            sensorml = json.load(f)
 
-sml = SensorEditor()
+    sml = SensorEditor()
+

@@ -8,6 +8,9 @@ email: enoc.martinez@upc.edu
 license: MIT
 created: 26/3/24
 """
+import os
+
+import jsonschema
 import rich as r
 import rich
 import json
@@ -151,21 +154,24 @@ class SensorCalibration:
             self.values[key] = np.array(values)
 
         # Now make sure that we have all required data within the array. Required values:
-        for ref in ["reference", "reading", "correction"]:
+        for ref in ["reference", "measurement", "correction"]:
             if ref not in self.values.keys():
                 r.print(f"[red]Missing required key in calibration array '{ref}'")
                 raise ValueError(f"Missing required key in calibration array '{ref}'")
         # optional values
-        __optional_values = ["uncertainty"]
-        for ref in ["reference", "reading", "correction"]:
+        __optional_values = ["expanded uncertainty"]
+        for ref in ["reference", "measurement", "correction"]:
             if ref not in self.values.keys():
                 r.print(f"[yellow]Missing optional key in calibration array '{ref}'")
 
-        self.readings = self.values["reading"]
+        r.print(self.values)
+        self.references = self.values["reference"]
+        self.measurements = self.values["measurement"]
         self.corrections = self.values["correction"]
+        self.uncertainties = self.values["expandedUncertainty"]
 
         if self.defined_uncertainty():
-            self.uncertainty = self.values["uncertainty"]
+            self.uncertainty = self.values["expanded uncertainty"]
 
         # getting stability per year
         try:
@@ -193,61 +199,95 @@ class SensorCalibration:
             r.print(f"[red]Stability not found for {component.id}!")
             r.print(traceback.format_exc())
             self.yearly_stability = 0
+        except UnboundLocalError:
+            r.print(f"[red]Stability not defined for {component.id}!")
+            r.print(traceback.format_exc())
+            self.yearly_stability = 0
 
     def defined_uncertainty(self):
         """
         Checks if the current calibration defined the uncertanity
         :return:  True / False
         """
-        if "uncertainty" in self.values.keys():
+        if "expanded uncertainty" in self.values.keys():
             return True
         return False
 
 
     def plot_calibration(self, ax: Axes, step:float = 0.001):
 
-        if "uncertainty" in self.values.keys():
-            u1 = self.values["reading"] + self.values["uncertainty"]
-            u2 = self.values["reading"] - self.values["uncertainty"]
-            ax.fill_between(self.values["reference"], u1, u2, alpha=0.2, color="blue", label="uncertainty")
+        if "expanded uncertainty" in self.values.keys():
+            u1 = self.values["measurement"] + self.values["expanded uncertainty"]
+            u2 = self.values["measurement"] - self.values["expanded uncertainty"]
+            ax.fill_between(self.values["reference"], u1, u2, alpha=0.2, color="blue", label="expanded uncertainty")
 
-        ax.scatter(self.values["reference"], self.values["reading"], label="readings")
+        ax.scatter(self.values["reference"], self.values["measurement"], label="measurements")
         ax.set_xlabel("reference")
-        ax.set_ylabel("reading")
+        ax.set_ylabel("measurement")
         xmin = self.values["reference"][0]
         xmax = self.values["reference"][-1]
         x = np.arange(xmin, xmax, step)
-        yinterp = np.interp(x, self.values["reference"], self.values["reading"])
+        yinterp = np.interp(x, self.values["reference"], self.values["measurement"])
         ax.plot(x, yinterp, linestyle="--", color="orange", label="interpolation")
         ax.legend()
         return ax
 
-    def get_correction(self, value, readings, corrections):
+    def get_correction(self, value, measurements, corrections):
         """
-        Given a reading value, calculate the correction to be applied according to the calibration using linear
+        Given a measurement value, calculate the correction to be applied according to the calibration using linear
         interpolation
         :param value:
-        :param readings: calibration readings
+        :param measurements: calibration measurements
         :param corrections: calibration corrections
         :return:
         """
 
-        if value > self.readings[-1] or value < self.readings[0]:
+        if value > self.measurements[-1] or value < self.measurements[0]:
             r.print(f"[yellow]Value {value} beyond calibration!")
             return value
 
-        for i in range(len(self.readings) - 1):
-            if  self.readings[i] < value < self.readings[i+1]:
-                # Readings are X, corrections are Y
+        for i in range(len(self.measurements) - 1):
+            if  self.measurements[i] < value < self.measurements[i + 1]:
+                # measurements are X, corrections are Y
                 # Interpolation implemented as  y = (x-x1)*(y2-y1)/(x2-x1) + y1
                 x = value
-                x1 = readings[i-1]
-                x2 = readings[i]
+                x1 = measurements[i-1]
+                x2 = measurements[i]
                 y1 = corrections[i-1]
                 y2 = corrections[i]
                 corr = (x-x1)*(y2-y1)/(x2-x1) + y1
                 return corr
-        raise ValueError(f"Data point beyond calibration! val={value} max reading {self.readings[-1]}")
+        raise ValueError(f"Data point beyond calibration! val={value} max measurement {self.measurements[-1]}")
+
+    def get_corrections_u(self, value) -> (float, float):
+        """
+        Given a measurement value, calculate the correction to be applied according to the calibration using linear
+        interpolation
+        :param value:
+        :param measurements: calibration measurements
+        :param corrections: calibration corrections
+        :param uncertainties:
+        :return:
+        """
+
+        if value > self.measurements[-1] or value < self.measurements[0]:
+            r.print(f"[yellow]Value {value} beyond calibration!")
+            return value
+
+        for i in range(len(self.measurements) - 1):
+            if  self.measurements[i] < value < self.measurements[i + 1]:
+                # measurements are X, corrections are Y
+                # Interpolation implemented as  y = (x-x1)*(y2-y1)/(x2-x1) + y1
+                x = value
+                x1 = self.measurements[i-1]
+                x2 = self.measurements[i]
+                y1 = self.corrections[i-1]
+                y2 = self.corrections[i]
+                corr = (x-x1)*(y2-y1)/(x2-x1) + y1
+                uncert = max(self.uncertainties[i], self.uncertainties[i+1])
+                return corr, uncert
+        raise ValueError(f"Data point beyond calibration! val={value} max measurement {self.measurements[-1]}")
+
 
     def calc_uncertainty(self, values: np.array, times: np.array, stability=True) -> np.array:
         """
@@ -260,7 +300,7 @@ class SensorCalibration:
 
         for i in range(len(values)): # for every point in the array
             value = values[i]
-            u = self.get_correction(value, self.readings, self.uncertainty)
+            u = self.get_correction(value, self.measurements, self.uncertainty)
 
             if stability and self.yearly_stability:
                 # Add the drift to the uncertainty
@@ -286,7 +326,7 @@ class SensorCalibration:
         return uncertainty
 
 
-    def correct(self, values: np.array) -> np.array:
+    def correct_u(self, values: np.array) -> np.array:
         """
         Adjusts the input array according to the calibration sheet using linear interpolation.
         :param values: input array
@@ -294,13 +334,15 @@ class SensorCalibration:
         """
         # create an empty array
         out = np.zeros(len(values))
+        uncert95 = np.zeros(len(values))
 
         for i in range(len(values)): # for every point in the array
             value = values[i]
-            corr = self.get_correction(value, self.readings, self.corrections)
+            corr = self.get_corrections_u(value, self.measurements, self.corrections)
             out[i] = value - corr
 
-        return out
+        uncert99 = 3/2 * uncert95
+        return out, uncert95, uncert99
 
 class Component(AbstractComponent):
     def __init__(self, doc, mapper):
@@ -365,7 +407,7 @@ class SensorML(AbstractComponent):
             return self.calibrations[variable_name]
 
 
-def sensorml_from_gui(generic: dict, variables: list):
+def from_gui(generic: dict, variables: list):
     """
     Generate a SensorML document from the GUI output
     """
@@ -414,69 +456,92 @@ def sensorml_from_gui(generic: dict, variables: list):
             {
                 "definition": "http://vocab.nerc.ac.uk/collection/W06/current/CLSS0002",
                 "label": "instrumentType",
-                "value": generic["sensorType"]
+                "value": generic["sensorType"]["uri"]
             }
         ],
-        "contacts": [],
+        #"contacts": [],
         "outputs": [],
         "components": []
     }
 
     for v in variables:
         rich.print(v)
+
         output =     {
-          "type": "Quantity",
+          "type": "ObservableProperty",
           "id": v["varcode"],
-          "name": v["standardName"]["label"],
           "label": v["varname"]["label"],
+          "name": v["standardName"]["label"],
           "definition": v["standardName"]["uri"],
           "uom": {
-            "label": v["units"]["label"],
+            "code": v["units"]["label"],
             "href": v["units"]["uri"]
           }
         }
         doc["outputs"].append(output)
 
-        uom = {"label": v["units"]["label"], "href": v["units"]["uri"]}
+        uom = {"code": v["units"]["label"]}
+
+        output_comp =     {
+          "type": "ObservableProperty",
+          "id": v["varcode"],
+          "label": v["varname"]["label"],
+          "name": v["standardName"]["label"],
+          "definition": v["standardName"]["uri"],
+          "uom": {
+            "code": v["units"]["label"],
+            "href": v["units"]["uri"]
+          }
+        }
+
 
         component =     {
-          "id": "TEMP",
+          "id": v["varcode"],
           "type": "PhysicalComponent",
-          "name": generic["sensorName"] + " " + v["varcode"],
-          "label": generic["sensorName"] + " " + v["varcode"],
+          "name": generic["sensorName"] + "-" + v["varcode"],
+          "label": generic["sensorName"] + "-" + v["varcode"],
           "uniqueId": sensor_id + ":" +v["varcode"],
-          "capabilities": [],
+          #"capabilities": [],
           "history": [
             {
               "label": "calibration",
               "definition": "http://vocab.nerc.ac.uk/collection/W03/current/W030003",
               "time": v["calibration"]["date"],
               "description": "Calibration.",
-              "classifiers": [],
+              #"classifiers": [],
               "contacts": [
                 {
                   "role": "http://vocab.nerc.ac.uk/collection/W08/current/CONT0002",
                   "organisationName": v["calibration"]["lab"],
                 }
               ],
-              "documentation": [],
               "properties": [
+              {
+                  "type": "Quantity",
+                  "label": "coverage factor",
+                  "definition": "...",
+                  "uom": {
+                      "code": "dimensionless"
+                  },
+                  "value": v["calibration"]["coverageFactor"]
+              },
                 {
                   "type": "DataArray",
                   "elementType": {
                     "type": "DataRecord",
-                    "name": "calibration_results",
+                    "name": "calibrationResults",
                     "fields": [
                       {
                         "type": "Quantity",
                         "name": "reference",
+                        "label": "reference",
                         "definition": "...",
                         "uom": uom
                       },
                       {
                         "type": "Quantity",
                         "name": "measurement",
-                        "label": "Reading",
+                        "label": "measurement",
                         "definition": "...",
                         "uom":uom
                       },
@@ -489,8 +554,8 @@ def sensorml_from_gui(generic: dict, variables: list):
                       },
                       {
                         "type": "Quantity",
-                        "name": "uncertainty",
-                        "label": "uncertainty",
+                        "name": "expandedUncertainty",
+                        "label": "expanded uncertainty",
                         "definition": "...",
                         "uom": uom
                       }
@@ -502,8 +567,103 @@ def sensorml_from_gui(generic: dict, variables: list):
               ]
             }
           ],
-          "outputs": [output]
+          "outputs": [output_comp]
         }
         doc["components"].append(component)
 
     return doc
+
+def process_by_mapping(sml_items: list, doc: dict, mappings: dict):
+    """Maps complex SensorML items to the simpler GUI-JSON format"""
+    for item in sml_items:
+        for key, value in mappings.items():
+            if item["label"] == key:
+                if isinstance(doc[value], str):
+                    doc[value] = item["value"]
+                elif isinstance(doc[value], dict):
+                    doc[value]["uri"] = item["value"]
+
+    return doc
+
+def to_gui(filename)->dict:
+    """Opens a json doc and tries to convert from SensorML to the GUI simplified json"""
+    with open(filename) as f:
+        sml = json.load(f)
+
+    doc = {
+        "sensorName": "",
+        "longName": "",
+        "serialNumber": "",
+        "model": {},
+        "sensorType": {},
+        "manufacturer": {},
+        "variables": []
+    }
+    identifiers_mapping = { # SensorML key: simple doc key
+        "shortName": "sensorName",
+        "longName": "longName",
+        "serialNumber": "serialNumber",
+        "model": "model",
+        "manufacturer": "manufacturer",
+    }
+    doc = process_by_mapping(sml["identifiers"], doc, identifiers_mapping)
+    classifier_mapping = {
+        "instrumentType": "sensorType"
+    }
+    doc = process_by_mapping(sml["classifiers"], doc, classifier_mapping)
+    for component in sml["components"]:
+        if len(component["outputs"]) != 1:
+            raise ValueError("Each component should provide only one output")
+        output = component["outputs"][0]
+
+        variable = {
+            "varcode": output["id"],
+            "varname": {"label": output["label"]},  # P02
+            "standardName": {"uri": output["definition"]}, # P07
+            "units": {"uri": output["uom"]["href"]}, # P06
+            "calibration": {}
+        }
+        doc["variables"].append(variable)
+
+        calibration = {}
+        for history in component["history"]:
+            if history["label"] == "calibration":
+
+                # Look for calibration facility role in contacts
+                for c in history["contacts"]:
+                    if c["role"] == "http://vocab.nerc.ac.uk/collection/W08/current/CONT0002":
+                        calibration["lab"] = c["organisationName"]
+                calibration["date"] = history["time"]
+
+                # Process history components
+                for prop in history["properties"]:
+                    if "label" in prop.keys() and prop["label"] == "coverage factor":
+                        calibration["coverageFactor"] = prop["value"]
+
+                    if "type" in prop.keys() and prop["type"] == "DataArray" and prop["elementType"]["name"]  == "calibrationResults":
+                        calibration["array"] = prop["values"]
+
+        variable["calibration"] = calibration
+
+    return doc
+
+
+def validate_doc(doc):
+    # Load JSON Schema
+    with open("ogcapi-connected-systems/sensorml/schemas/json/PhysicalSystem.json") as f:
+        schema = json.load(f)
+
+    base_path = os.path.join(os.getcwd(), "ogcapi-connected-systems", "sensorml", "schemas", "json")
+
+    resolver = jsonschema.validators.RefResolver(base_uri='file://{}/'.format(base_path), referrer=schema)
+    r.print(f"Validating '{doc['type']}' with id='{doc['id']}'...", end="")
+    try:
+        jsonschema.validate(instance=doc, schema=schema, resolver=resolver)
+    except jsonschema.exceptions.ValidationError as e:
+        rich.print("[red]Not valid!")
+        raise e
+
+
+
+
+    r.print("[green]done")
