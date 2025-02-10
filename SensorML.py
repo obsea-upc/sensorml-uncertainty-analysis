@@ -164,7 +164,6 @@ class SensorCalibration:
             if ref not in self.values.keys():
                 r.print(f"[yellow]Missing optional key in calibration array '{ref}'")
 
-        r.print(self.values)
         self.references = self.values["reference"]
         self.measurements = self.values["measurement"]
         self.corrections = self.values["correction"]
@@ -196,8 +195,8 @@ class SensorCalibration:
             else:
                 r.print(f"[red]Unknown '{stability_units}'! expected stability related to day, week, month or year!")
         except AttributeError:
-            r.print(f"[red]Stability not found for {component.id}!")
-            r.print(traceback.format_exc())
+            r.print(f"[yellow]Stability not found for {component.id}!")
+            #r.print(traceback.format_exc())
             self.yearly_stability = 0
         except UnboundLocalError:
             r.print(f"[red]Stability not defined for {component.id}!")
@@ -465,8 +464,6 @@ def from_gui(generic: dict, variables: list):
     }
 
     for v in variables:
-        rich.print(v)
-
         output =     {
           "type": "ObservableProperty",
           "id": v["varcode"],

@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/778794071.svg)](https://doi.org/10.5281/zenodo.14844345)
+
 # SensorML Uncertainty Analysis #
 This repository contains the code the analyze time series data with metrological information encoded in a SensorML file (JSON encoding). Two tools are included in this repository:
 * **SensorML Editor**: A user-friendly editor based to generate sensor machine-actionable sensor metadata descriptions with calibration information.

@@ -201,7 +201,6 @@
               }
             }
           ],
-
           "properties": [
             {
               "type": "QuantityRange",
@@ -241,8 +240,8 @@
                   },
                   {
                     "type": "Quantity",
-                    "name": "reading",
-                    "label": "Reading",
+                    "name": "measurement",
+                    "label": "measurement",
                     "definition": "...",
                     "uom": {
                       "label": "°C",
@@ -382,8 +381,8 @@
                   },
                   {
                     "type": "Quantity",
-                    "name": "reading",
-                    "label": "Reading",
+                    "name": "measurement",
+                    "label": "measurement",
                     "definition": "...",
                     "uom": {
                       "label": "S/m",

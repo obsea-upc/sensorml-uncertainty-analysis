@@ -33,7 +33,7 @@ def get_decimal_precision(values, limit=1000):
     for v in values:
         try:
             s = str(v)
-            decimals = max(len(s.split(".")[1]), 0)
+            decimals = max(len(s.split(".")[1]), decimals)
         except IndexError:
             pass
     return decimals
@@ -61,35 +61,75 @@ def correct_data_point(value, references,  measurements, corrections, uncertaint
     return np.nan, np.nan
 
 
-def calibrate(values, references, measurements, corrections, uncertainties):
+def calibrate(values: np.array, references: np.array, measurements: np.array, corrections: np.array,
+              uncertainties: np.array) -> (np.array, np.array):
     # measurements are X, corrections are Y
     # Interpolation implemented as  y = (x-x1)*(y2-y1)/(x2-x1) + y1
 
-    # Use the precision of the uncertainty
-    p = get_decimal_precision(uncertainties)
+
+    if np.count_nonzero(uncertainties):
+        # By default, use the precision of the uncertainty
+        p = get_decimal_precision(uncertainties)
+    else:
+        # However, if the manufacturer did not provide uncertainty, we need a workaround
+        # Get the max precision of the references and the measurements
+        p = max(get_decimal_precision(references), get_decimal_precision(measurements))
+
     result = np.zeros(len(values))
     result_u95 = np.zeros(len(values))
-    result_u99 = np.zeros(len(values))
 
     for i in range(len(values)):
         corr, uncert95 = correct_data_point(values[i], references, measurements, corrections, uncertainties)
         result[i] = round(values[i] + corr, p)
         result_u95[i] = round(uncert95, p)
-        result_u99[i] = round(1.5 * uncert95, p)
 
-    return result, result_u95, result_u99
+    if np.count_nonzero(result_u95):
+        # If ALL values are 0 it means that we do not have uncertainty information, so let's put NaN to all
+        result_u95.fill(np.nan)
+    return result, result_u95
+
+
+def multi_sensor_netcdf(wf):
+    # Check if the WaterFrame is multi-sensor or not
+
+    serial_numbers = []
+    for varcode, meta in wf.vocabulary.items():
+        if "sensor_serial_number" not in meta.keys():
+            continue
+        print(f"var: {varcode}, SN: {meta['sensor_serial_number']}")
+        serials = meta["sensor_serial_number"]
+        for s in serials:
+            if s.strip():
+                serial_numbers.append(s.strip)
+    return serial_numbers
+
 
 
 def open_netcdf(filename):
-    return emh.metadata.dataset.load_data(filename)
+    wf = emh.metadata.dataset.load_data(filename)
+    print(wf.data)
+    return wf
 
 def write_netcdf(wf):
     return emh.metadata.dataset.export_to_netcdf(wf, "output.nc")
 
 
 def run_analysis(sensorml: str, dataset: str, output:str, plot=False):
+    if dataset.endswith(".csv"):
+        df = pd.read_csv(dataset)
+        wf = None
+    elif dataset.endswith(".nc"):
+        wf = open_netcdf(dataset)
+        df = wf.data
+    else:
+        raise ValueError(f"Unimplemented format {dataset.split('.')}")
 
-    matplotlib.use('TkAgg')  # Set the backend to TkAgg
+    serial_numbers = multi_sensor_netcdf(wf)
+    if multi_sensor_netcdf(wf):
+        print("multisensor")
+    else:
+        pass
+
     with open(sensorml) as f:
         doc = json.load(f)
 
@@ -110,14 +150,6 @@ def run_analysis(sensorml: str, dataset: str, output:str, plot=False):
     r.print("[green]done")
 
     sml = SensorML(doc)
-    if dataset.endswith(".csv"):
-        df = pd.read_csv(dataset)
-        wf = None
-    elif dataset.endswith(".nc"):
-        wf = open_netcdf(dataset)
-        df = wf.data
-    else:
-        raise ValueError(f"Unimplemented format {dataset.split('.')}")
 
     if "time" in df.columns:
         df = df.rename(columns={"time": "TIME"})
@@ -126,35 +158,36 @@ def run_analysis(sensorml: str, dataset: str, output:str, plot=False):
     df = df.set_index("TIME")
 
     for variable in df.columns:
-        if variable.lower().endswith("_qc"):
+        if variable.lower().endswith("_qc") or variable.lower() in ["depth", "latitude", "longitude", "sensor_id"]:
             continue
 
         calibration = sml.get_calibration(variable)
         if not calibration:
             r.print(f"[yellow]No calibration found for {variable}!")
+            if wf: # adding raw data
+                meta = wf.vocabulary[variable]  # original metadata
+                # Add calibration notes
+                meta["long_name"] += " (raw sensor values)"
+                if "comment" not in meta.keys():
+                    meta["comment"] = "Raw sensor values. "
+                else:
+                    meta["comment"] = "Raw sensor values. " + meta["comment"]
             continue
 
         # Getting the precision based in calibration
+        r.print(f"[cyan]Calculating uncertainties for {variable}!")
 
 
         raw_values = df[variable].values
         times = df.index.values
         # corrected_values = calibration.correct(raw_values)
         # corrected_values, uncertainties = calibration.get_corrections_u(raw_values)
-        print("uncertainties", calibration.uncertainties)
-        corrected_values, u95, u99 = calibrate(raw_values, calibration.references, calibration.measurements,
+        corrected_values, u95 = calibrate(raw_values, calibration.references, calibration.measurements,
                                                calibration.corrections, calibration.uncertainties)
-
-        print(pd.DataFrame({
-            "raw": raw_values,
-            "corrected": corrected_values,
-            "u95": u95
-        }))
 
         df[variable + "_RAW"] = raw_values
         df[variable] = corrected_values
-        df[variable + "_U95"] = u95
-        df[variable + "_U99"] = u99
+        df[variable + "_UNCERTAINTY"] = u95
 
         if wf:
             if "projects" in wf.metadata:
@@ -171,7 +204,7 @@ def run_analysis(sensorml: str, dataset: str, output:str, plot=False):
             meta["long_name"] += " (corrected values)"
             meta["comment"] = "values corrected with latest available calibration. " + meta["comment"]
             ancillary = meta["ancillary_variables"].split(" ")
-            ancillary += [f"{variable}_{suffix}" for suffix in ["RAW", "U95", "U99"]]
+            ancillary += [f"{variable}_{suffix}" for suffix in ["RAW", "UNCERTAINTY"]]
 
             meta["ancillary_variables"] = ", ".join(ancillary)
             wf.vocabulary[variable] = meta
@@ -189,51 +222,61 @@ def run_analysis(sensorml: str, dataset: str, output:str, plot=False):
             meta["units"] = base["units"]
             meta["comment"] = "Expanded uncertainty with 95% coverage (k=2)"
             wf.vocabulary[variable + "_UNCERTAINTY"] = meta
-
-            export_to_netcdf(wf, output, multisensor_metadata=True)
-        else:
-            df.to_csv(output)
+            if plot:
+                plot_variable(variable, times, raw_values, corrected_values, calibration, show=False)
 
 
-        if plot:
-            r.print(f"Plotting variable {variable}")
-            fig, axd = plt.subplot_mosaic([['left', 'right'], ['center', 'center'], ['bottom', 'bottom']])
+    if wf:
+        export_to_netcdf(wf, output, multisensor_metadata=True)
+    else:
+        df.to_csv(output)
 
-            ax1 = axd["left"]
-            ax2 = axd["right"]
-            ax3 = axd["center"]
-            ax4 = axd["bottom"]
 
-            ax3.get_shared_x_axes().join(ax4, ax3)
 
-            ax1.plot(times, raw_values, label="raw data")
-            ax1.set_title(variable + " raw data")
-            ax1.legend()
-            ax1.grid()
+        
 
-            calibration.plot_calibration(ax2)
-            ax2.set_title(f"{variable} calibration curve")
-            ax2.grid()
+def plot_variable(variable, times, raw_values, corrected_values, calibration, show=False):
+    matplotlib.use('TkAgg')  # Set the backend to TkAgg
+    r.print(f"Plotting variable {variable}")
+    fig, axd = plt.subplot_mosaic([['left', 'right'], ['center', 'center'], ['bottom', 'bottom']])
 
-            ax3.set_title(variable + " processed data")
-            ax3.plot(times, corrected_values, label="corrected data")
-            ax3.plot(times, raw_values, alpha=0.5, label="raw data")
-            ax3.grid()
+    ax1 = axd["left"]
+    ax2 = axd["right"]
+    ax3 = axd["center"]
+    ax4 = axd["bottom"]
 
-            if calibration.defined_uncertainty():
-                uncertainty = calibration.calc_uncertainty(raw_values, times, stability=True)
-                ax3.fill_between(times, raw_values + uncertainty, raw_values - uncertainty, alpha=0.5, label="uncertainty")
+    ax3.get_shared_x_axes().join(ax4, ax3)
 
-                ax4.fill_between(times, uncertainty, -uncertainty, alpha=0.3, label="uncertainty")
-                ax4.set_title("Corrections + Uncertainty")
-            else:
-                ax4.set_title("Corrections")
+    ax1.plot(times, raw_values, label="raw data")
+    ax1.set_title(variable + " raw data")
+    ax1.legend()
+    ax1.grid()
 
-            ax4.plot(times, corrected_values - raw_values, label="correction")
-            ax4.grid()
-            ax4.legend()
+    calibration.plot_calibration(ax2)
+    ax2.set_title(f"{variable} calibration curve")
+    ax2.grid()
 
-            ax3.legend()
+    ax3.set_title(variable + " processed data")
+    ax3.plot(times, corrected_values, label="corrected data")
+    ax3.plot(times, raw_values, alpha=0.5, label="raw data")
+    ax3.grid()
+
+    if calibration.defined_uncertainty():
+        uncertainty = calibration.calc_uncertainty(raw_values, times, stability=True)
+        ax3.fill_between(times, raw_values + uncertainty, raw_values - uncertainty, alpha=0.5, label="uncertainty")
+
+        ax4.fill_between(times, uncertainty, -uncertainty, alpha=0.3, label="uncertainty")
+        ax4.set_title("Corrections + Uncertainty")
+    else:
+        ax4.set_title("Corrections")
+
+    ax4.plot(times, corrected_values - raw_values, label="correction")
+    ax4.grid()
+    ax4.legend()
+
+    ax3.legend()
+
+    if show:
         plt.show()
 
 
